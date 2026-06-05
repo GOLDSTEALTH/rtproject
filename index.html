@@ -1,54 +1,149 @@
 <!DOCTYPE html>
-<html lang ="en">
+<html>
 <head>
-    <meta charset ="UTF-8">
-    <meta name=""viewport" content="width=device-width, initial-scale=1.0">
-    <title>Weather-Based Commute Decision system</title>
+    <title>Weather Route Checker</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            margin:0;
-            padding:0;
-            background-color: #f4f4f9;
-        
-        }
-        header{
-            background-color: #333;
-            color: white;
-            padding: 10px 20px;
-            text-align: center;
-        }
-        .container {
-            max-width: 800px;
-            margin: 20px auto;
+            font-family: Arial;
+            background-color: lightblue;
             padding: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
         }
-        label{
-            display: block;
-            margin-top: 20px;
-            font-weight: bold;
+        .main-box {
+            background-color: white;
+            padding: 30px;
+            margin: 50px;
+            border: 2px solid black;
         }
         input {
-            width: 100%;
-            padding: 10px;
-            margin-top:5px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
+            width: 300px;
+            padding: 8px;
+            margin: 10px;
         }
         button {
-            display: block;
-            width: 100%;
-            padding: 10px;
-            margin-top: 20px;
-            background-color: #007bff;
+            padding: 10px 20px;
+            background-color: green;
             color: white;
             border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            
+            margin: 10px;
+        }
+        .result-box {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: lightyellow;
+            border: 1px solid gray;
         }
     </style>
 </head>
+<body>
+    <h1>Weather Based Commute System</h1>
+    
+    <div class="main-box">
+        <h3>Enter Locations:</h3>
+        
+        <br>Source: <input type="text" id="from" placeholder="Enter city name">
+        
+        <br>Destination: <input type="text" id="to" placeholder="Enter city name">
+        
+        <br><button onclick="getWeather()">Get Weather</button>
+        
+        <div id="output"></div>
+    </div>
+
+    <script>
+        function getWeather() {
+            var from = document.getElementById('from').value;
+            var to = document.getElementById('to').value;
+            var output = document.getElementById('output');
+            
+            if(from == "" || to == "") {
+                alert("Please enter both cities");
+                return;
+            }
+            
+            output.innerHTML = "Loading...";
+            
+            // get location 1
+            fetch('https://nominatim.openstreetmap.org/search?q=' + from + '&format=json&limit=1')
+            .then(response => response.json())
+            .then(data1 => {
+                var lat1 = data1[0].lat;
+                var lon1 = data1[0].lon;
+                
+                // get location 2
+                fetch('https://nominatim.openstreetmap.org/search?q=' + to + '&format=json&limit=1')
+                .then(response => response.json())
+                .then(data2 => {
+                    var lat2 = data2[0].lat;
+                    var lon2 = data2[0].lon;
+                    
+                    // calculate distance
+                    var R = 6371;
+                    var dLat = (lat2 - lat1) * 3.14159 / 180;
+                    var dLon = (lon2 - lon1) * 3.14159 / 180;
+                    var a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * 3.14159/180) * Math.cos(lat2 * 3.14159/180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+                    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                    var dist = R * c;
+                    
+                    var numPoints = 2;
+                    if(dist > 10) {
+                        numPoints = 5;
+                    }
+                    
+                    // make points between
+                    var allPoints = [];
+                    for(var i = 0; i <= numPoints + 1; i++) {
+                        var frac = i / (numPoints + 1);
+                        var newLat = parseFloat(lat1) + (parseFloat(lat2) - parseFloat(lat1)) * frac;
+                        var newLon = parseFloat(lon1) + (parseFloat(lon2) - parseFloat(lon1)) * frac;
+                        allPoints.push({lat: newLat, lon: newLon});
+                    }
+                    
+                    // get weather for each point
+                    var weatherResults = [];
+                    var count = 0;
+                    
+                    for(var j = 0; j < allPoints.length; j++) {
+                        (function(index) {
+                            fetch('https://api.open-meteo.com/v1/forecast?latitude=' + allPoints[index].lat + '&longitude=' + allPoints[index].lon + '&current=precipitation,cloudcover')
+                            .then(response => response.json())
+                            .then(weather => {
+                                var condition = "Sunny";
+                                if(weather.current.precipitation > 0) {
+                                    condition = "Rainy";
+                                } else if(weather.current.cloudcover > 50) {
+                                    condition = "Cloudy";
+                                }
+                                
+                                var pointName = "";
+                                if(index == 0) {
+                                    pointName = "Point 1 - " + from + " (Start)";
+                                } else if(index == allPoints.length - 1) {
+                                    pointName = "Point " + (index + 1) + " - " + to + " (End)";
+                                } else {
+                                    pointName = "Point " + (index + 1) + " (between cities)";
+                                }
+                                
+                                weatherResults[index] = pointName + " - Weather: " + condition;
+                                count++;
+                                
+                                if(count == allPoints.length) {
+                                    var results = "<div class='result-box'>";
+                                    results += "<b>Distance: " + dist.toFixed(1) + " km</b><br><br>";
+                                    for(var k = 0; k < weatherResults.length; k++) {
+                                        results += weatherResults[k] + "<br>";
+                                    }
+                                    results += "</div>";
+                                    output.innerHTML = results;
+                                }
+                            });
+                        })(j);
+                    }
+                });
+            })
+            .catch(error => {
+                output.innerHTML = "<div class='result-box'>Error! Please check city names</div>";
+            });
+        }
+    </script>
+</body>
+</html>
